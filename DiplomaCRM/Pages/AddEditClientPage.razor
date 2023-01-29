@@ -1,0 +1,173 @@
+﻿@page "/addEditClient/{Id:int?}"
+
+@*Внедрение сервисов для навигации между страницами и контекстом данных*@
+@inject IDbContextFactory<DiplomaCRMContext> ContextFactory
+@inject NavigationManager NavigationManager
+@inject WebAuthentication WebAuthentication
+
+@*Проверка, редактируем ли мы профиль или создаём нового клиента*@
+@if (Id != null)
+{
+    <PageTitle>Изменение профиля клиента</PageTitle>
+}
+else
+{
+    <PageTitle>Добавление нового пользователя</PageTitle>
+}
+
+<AuthorizeView Context="Login">
+    <Authorized>
+        <MudContainer Class="my-10 pa-10">
+            @if (Id != null)
+            {
+                <MudText Class="mb-5" Typo="Typo.h3" Align="Align.Center">Изменение профиля клиента</MudText>
+            }
+            else
+            {
+                <MudText Class="mb-5" Typo="Typo.h3" Align="Align.Center">Добавление нового клиента</MudText>   
+            }
+            <EditForm Model="@model" OnValidSubmit="SaveEdits">
+                <DataAnnotationsValidator />
+                <MudCard Outlined="true" Class="pa-4">
+                    <MudCardContent>
+                        <MudGrid>
+                            <MudItem xs="6">
+                                <MudTextField Immediate="true" Label="Наименование" @bind-Value="model.ClientName"
+                                              For="@(() => model.ClientName)" />
+                            </MudItem>
+                            <MudItem xs="6">
+                                <MudSelect @bind-Value="model.ClientType" Label="Тип клиента" AnchorOrigin="Origin.BottomCenter"
+                                           For="@(() => model.ClientType)">
+                                    @foreach (var item in types)
+                                    {
+                                        <MudSelectItem Value="@item.ClientTypeId">@item.ClientTypeValue</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </MudItem>
+                            <MudItem xs="6">
+                                <MudTextField Immediate="true" Label="Телефон" @bind-Value="model.ClientPhone"
+                                              For="@(() => model.ClientPhone)" Mask="@(new PatternMask("0-000-000-00-00"))" />
+                            </MudItem>
+                            @if (Login.User.IsInRole("3"))
+                            {
+                                <MudItem xs="6">
+                                    <MudSelect @bind-Value="model.ClientEmployee" Label="Менеджер" AnchorOrigin="Origin.BottomCenter"
+                                           For="@(() => model.ClientEmployee)">
+                                        @foreach (var item in employees)
+                                        {
+                                        <MudSelectItem Value="@item.EmployeeId">@item.FullName</MudSelectItem>
+                                        }
+                                </MudSelect>
+                            </MudItem>
+                            }
+                            <MudItem xs="12">
+                                <MudTextField Immediate="true" Label="Адрес" @bind-Value="model.ClientAddress"
+                                              For="@(() => model.ClientAddress)" Counter="350" MaxLength="350"
+                                              Validation="@(new Func<string, IEnumerable<string>>(MaxCharecters))"
+                                              Lines="4" />
+                            </MudItem>
+                        </MudGrid>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudStack Row="true" Spacing="5">
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Success">Сохранить изменения</MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="BackToClientsPage">Отменить</MudButton>
+                        </MudStack>
+                    </MudCardActions>
+                </MudCard>
+            </EditForm>
+        </MudContainer>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] ISnackbar snackbar { get; set; }
+
+    private Client client { get; set; }
+    private List<ClientType> types { get; set; } = new();
+    private List<Employee> employees { get; set; } = new();
+    private ClientAddEditModel model { get; set; } = new();
+
+    private bool _success;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using (var ctx = ContextFactory.CreateDbContext())
+        {
+            types = await ctx.ClientTypes.ToListAsync();
+            employees = await ctx.Employees.Where(e => e.EmployeeRole == 2).ToListAsync();
+
+            employees.Add(new Employee
+                {
+                    EmployeeFirstName = "Отсутствует",
+                    EmployeeId = 0
+                });
+            model.ClientType = 1;
+            model.ClientEmployee = 0;
+
+            if (Id != 0)
+            {
+                client = ctx.Clients
+                .Include(c => c.ClientTypeNavigation)
+                .Include(c => c.ClientEmployee)
+                .FirstOrDefault(c => c.ClientId == Id);
+
+                model.ClientName = client.ClientName;
+                model.ClientType = client.ClientType;
+                model.ClientPhone = client.ClientPhone;
+                model.ClientAddress = client.ClientAddress;
+                if (client.ClientEmployeeId != null)
+                    model.ClientEmployee = (int)client.ClientEmployeeId;
+                else
+                    model.ClientEmployee = 0;
+            }
+        }
+    }
+
+    private IEnumerable<string> MaxCharecters(string ch)
+    {
+        if (!string.IsNullOrEmpty(ch) && 350 < ch?.Length)
+            yield return "Максимальная длина адреса 350";
+    }
+
+    private void SaveEdits(EditContext editContext)
+    {
+        using (var ctx = ContextFactory.CreateDbContext())
+        {
+            if (client != null)
+            {
+                client.ClientName = model.ClientName;
+                client.ClientType = model.ClientType;
+                client.ClientPhone = model.ClientPhone;
+                client.ClientAddress = model.ClientAddress;
+                client.ClientEmployeeId = model.ClientEmployee;
+
+                ctx.Entry(client).State = EntityState.Modified;
+                ctx.SaveChanges();
+                snackbar.Add("Изменения сохранены", Severity.Success);
+                NavigationManager.NavigateTo($"clientProfile/{Id}");
+            }
+            else
+            {
+                client = new Client();
+                client.ClientName = model.ClientName;
+                client.ClientType = model.ClientType;
+                client.ClientPhone = model.ClientPhone;
+                client.ClientAddress = model.ClientAddress;
+                client.ClientEmployeeId = model.ClientEmployee;
+
+                ctx.Clients.Add(client);
+                ctx.Entry(client).State = EntityState.Added;
+                ctx.SaveChanges();
+                snackbar.Add("Клиент добавлен", Severity.Success);
+                NavigationManager.NavigateTo("clients");
+            }
+        }
+    }
+
+    private void BackToClientsPage()
+    {
+        NavigationManager.NavigateTo(NavigationManager.BaseUri + $"clients");
+    }
+}

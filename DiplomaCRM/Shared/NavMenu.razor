@@ -1,0 +1,18 @@
+﻿<MudNavMenu>
+    <AuthorizeView>
+        <Authorized>
+            <MudNavLink Href="main" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Главная страница</MudNavLink>
+            <MudNavLink Href="clients" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Group">Клиенты</MudNavLink>
+            @if (context.User.IsInRole("2") || context.User.IsInRole("3"))
+            {
+                <MudNavLink Href="stats" Match="NavLinkMatch.Prefix" Icon="@Icons.Filled.PieChart">Отчёты</MudNavLink>
+                <MudNavLink Href="help" Match="NavLinkMatch.Prefix" Icon="@Icons.Filled.HelpCenter">Запрос о помощи</MudNavLink>
+            }
+            @if (context.User.IsInRole("1"))
+            {
+                <MudNavLink Href="addManager" Match="NavLinkMatch.Prefix" Icon="@Icons.Filled.PersonAdd">Добавить пользователя</MudNavLink>
+                <MudNavLink Href="managerList" Match="NavLinkMatch.Prefix" Icon="@Icons.Filled.FormatListBulleted">Список пользователей</MudNavLink>
+            }
+        </Authorized>
+    </AuthorizeView>
+</MudNavMenu>

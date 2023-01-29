@@ -1,0 +1,136 @@
+﻿@page "/help"
+
+@inject NavigationManager NavigationManager
+@inject WebAuthentication WebAuthentication
+@inject IDialogService DialogService
+@inject IDbContextFactory<DiplomaCRMContext> ContextFactory
+
+<PageTitle>Заявки на помощь</PageTitle>
+
+<style>
+    .selected {
+        background-color: #1E88E5 !important;
+    }
+
+        .selected > td {
+            color: white !important;
+        }
+
+            .selected > td .mud-input {
+                color: white !important;
+            }
+</style>
+
+<MudPaper Outlined="true" Class="my-16">
+    <MudTable Hover="true" Items="@requests" @ref="mudTable"
+              @bind-SelectedItem="selectedItem" AllowUnsorted="true" Loading="@_loading" LoadingProgressColor="Color.Info"
+              OnRowClick="RowClickEvent" RowClassFunc="@SelectedRowClassFunc" T="HelpRequest">
+        <ColGroup>
+            <col style="width: 5%" />
+            <col style="width: 15%" />
+            <col style="width: 15%" />
+            <col style="width: 15%" />
+            <col style="width: 50%" />
+            <col style="width: 10%" />
+        </ColGroup>
+        <ToolBarContent>
+            <MudText Typo="Typo.h6">Заявки на помощь</MudText>
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>№</MudTh>
+            <MudTh>Наименование</MudTh>
+            <MudTh>Тема</MudTh>
+            <MudTh>
+                <MudTableSortLabel InitialDirection="SortDirection.Descending" SortBy="new Func<HelpRequest, object>(x => x.HelpDate)">
+                    Дата
+                </MudTableSortLabel>
+            </MudTh>
+            <MudTh>Описание</MudTh>
+            <MudTh>Статус</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="№">@context.HelpId</MudTd>
+            <MudTd DataLabel="Наименование">@context.HelpClient.ClientName</MudTd>
+            <MudTd DataLabel="Тема">@context.HelpSubject</MudTd>
+            <MudTd DataLabel="Дата">@context.HelpDate.ToShortDateString()</MudTd>
+            <MudTd DataLabel="Описание">@context.HelpDescription</MudTd>
+            <MudTd DataLabel="Статус">@context.HelpStatusNavigation.HelpStatusValue</MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager InfoFormat="@infoFormat" RowsPerPageString="Строк на странице:" />
+        </PagerContent>
+    </MudTable>
+</MudPaper>
+
+@if (selectedRowNumber == -1)
+{
+    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="CloseHelpRequest">Закрыть заявку</MudButton>
+}
+
+@code {
+    [Inject] ISnackbar snackbar { get; set; }
+
+    private bool _loading;
+    private MudTable<HelpRequest> mudTable;
+    private HelpRequest selectedItem = null;
+    private int selectedRowNumber { get; set; }
+    private string infoFormat = "{first_item} - {last_item} из {all_items}";
+    List<HelpRequest> requests { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await WebAuthentication.GetAuthenticationStateAsync();
+        var userId = user.User.Claims.Where(c => c.Type == "Id").Select(c => c.Value).SingleOrDefault();
+        using (var ctx = ContextFactory.CreateDbContext())
+        {
+            _loading = true;
+            requests = await ctx.HelpRequests
+            .Where(r => r.HelpStatus == 1)
+            .Include(r => r.HelpStatusNavigation)
+            .Include(r => r.HelpClient)
+            .ToListAsync();
+
+            requests = requests.Where(r => r.HelpClient.ClientEmployeeId.ToString() == userId).ToList();
+            _loading = false;
+        }
+    }
+
+    private void RowClickEvent(TableRowClickEventArgs<HelpRequest> tableRowClickEventArgs)
+    {
+    }
+
+    private string SelectedRowClassFunc(HelpRequest request, int rowNumber)
+    {
+        if (selectedRowNumber == rowNumber)
+        {
+            selectedRowNumber = -1;
+            return string.Empty;
+        }
+        else if (mudTable.SelectedItem != null && mudTable.SelectedItem.Equals(request))
+        {
+            selectedRowNumber = rowNumber;
+            return "selected";
+        }
+        else
+        {
+            return string.Empty;
+        }
+    }
+
+    private async void CloseHelpRequest()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var dialog = DialogService.Show<HelpDialog>("Подтверждение", options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            selectedItem.HelpStatus = 2;
+            using (var ctx = ContextFactory.CreateDbContext())
+            {
+                ctx.Entry(selectedItem).State = EntityState.Modified;
+                ctx.SaveChanges();
+            }
+        }
+    }
+}

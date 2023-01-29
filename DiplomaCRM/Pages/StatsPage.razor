@@ -1,0 +1,60 @@
+﻿@page "/stats"
+
+@inject NavigationManager NavigationManager
+@inject IDbContextFactory<DiplomaCRMContext> ContextFactory
+
+@attribute [Authorize(Roles = "2,3")]
+
+<PageTitle>Статистика</PageTitle>
+
+<MudContainer Class="my-10">
+    <MudGrid>
+        <MudItem xs="8">
+            <MudText Typo="Typo.h6" Align="Align.Center">Продажи по отделам</MudText>
+            <MudChart ChartType="ChartType.Bar" ChartSeries="@statsBar" XAxisLabels="@xAxisLabels" Width="100%" Height="350px"></MudChart>
+        </MudItem>
+        <MudItem xs="4">
+            <MudText Typo="Typo.h6" Align="Align.Center">Продажи за текущий год (по клиентам)</MudText>
+            <MudChart ChartType="ChartType.Donut" Width="300px" Height="300px" InputData="@dataDonutChart" InputLabels="@labelsDonutChart"></MudChart>
+        </MudItem>
+        <MudItem xs="12">
+            <MudText Typo="Typo.h6" Align="Align.Center">Сравнение продаж между годами</MudText>
+            <MudChart ChartType="ChartType.Line" ChartSeries="@statsLine" XAxisLabels="@xAxisLabels" Width="100%" Height="350px"></MudChart>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    public List<int> dataOrders = new List<int>();
+    public double[] dataDonutChart;
+    public string[] labelsDonutChart;
+    public List<ChartSeries> statsBar = new List<ChartSeries>()
+    {
+        new ChartSeries() { Name = "Оборудование", Data = new double[] { 40, 20, 25, 27, 46, 28, 48, 37, 15, 35, 30, 23 } },
+        new ChartSeries() { Name = "Тариф", Data = new double[] { 19, 24, 35, 13, 28, 15, 13, 16, 31, 33, 27, 40 } },
+        new ChartSeries() { Name = "Обслуживание", Data = new double[] { 8, 6, 11, 13, 4, 16, 10, 16, 18, 20, 23, 18 } },
+    };
+
+    public List<ChartSeries> statsLine = new List<ChartSeries>()
+    {
+        new ChartSeries() { Name = "2020 год", Data = new double[] { 90, 79, 72, 69, 62, 62, 55, 65, 70, 78, 84, 89 } },
+        new ChartSeries() { Name = "2021 год", Data = new double[] { 10, 41, 35, 51, 49, 62, 69, 91, 127, 115, 95, 107 } },
+    };
+
+    public string[] xAxisLabels = { "Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек" };
+
+    protected override async Task OnInitializedAsync()
+    {
+
+
+        using (var ctx = ContextFactory.CreateDbContext())
+        {
+            labelsDonutChart = await ctx.Clients.Select(c => c.ClientName).Distinct().ToArrayAsync();
+            dataDonutChart = await ctx.Orders
+            .Where(o => o.OrderDate.Year == DateTime.Now.Year)
+            .GroupBy(o => o.OrderClientId)
+            .Select(g => Convert.ToDouble(g.Count()))
+            .ToArrayAsync();
+        }
+    }
+}

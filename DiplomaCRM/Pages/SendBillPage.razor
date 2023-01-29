@@ -1,0 +1,159 @@
+﻿@page "/sendBill/{Id:int}"
+
+@attribute [Authorize(Roles = "2,3")]
+
+@inject NavigationManager NavigationManager
+@inject WebAuthentication WebAuthentication
+@inject IDbContextFactory<DiplomaCRMContext> ContextFactory
+
+<PageTitle>Выставить счёт</PageTitle>
+
+<MudContainer>
+    <MudButton Class="mt-5" StartIcon="@Icons.Filled.ArrowBack" OnClick="NavigateBack"></MudButton>
+    <MudGrid>
+        <MudItem xs="4">
+            <MudText Class="my-5" Align="Align.Center" Typo="Typo.h6">Счёт на оплату №: @BillId</MudText>
+        </MudItem>
+        <MudItem xs="8">
+            <MudDatePicker Label="Дата выставления счёта" @bind-Date="BillDate" />
+        </MudItem>
+        <MudItem xs="6">
+            <MudText Typo="Typo.h6">Платёжная информация нашей компании</MudText>
+            <MudPaper Outlined="true" Class="mt-5 pa-5">
+                <MudMenu>
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Text" Color="Color.Info">Изменить платёжную информацию</MudButton>
+                    </ActivatorContent>
+                    <ChildContent>
+                        @foreach (var i in infoIds)
+                        {
+                            <MudMenuItem OnClick="@(() => SwapInfo(i))">Платёжная информация №@i</MudMenuItem>
+                        }
+                    </ChildContent>
+                </MudMenu>
+                <MudStack Class="mt-5">
+                    <MudText>ИНН: @companyPaymentInfos.InfoInn</MudText>
+                    <MudText>Название компании: @companyPaymentInfos.InfoFullName</MudText>
+                    <MudText>Адрес компании: @companyPaymentInfos.InfoAddress</MudText>
+                    <MudText>Бухгалтер: @companyPaymentInfos.InfoBookkeeper</MudText>
+                    <MudText>Банк: @companyPaymentInfos.InfoBankName</MudText>
+                    <MudText>Город банка: @companyPaymentInfos.InfoBankCity</MudText>
+                    <MudText>Расчётный счёт: @companyPaymentInfos.InfoPaymentAccount</MudText>
+                    <MudText>БИК: @companyPaymentInfos.InfoBik</MudText>
+                    <MudText>Кор. счёт: @companyPaymentInfos.InfoCorrespondentAccount</MudText>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6">
+            <MudText Typo="Typo.h6">Платёжная информация покупателя</MudText>
+            <MudPaper Outlined="true" Class="mt-5 pa-5">
+                <MudStack>
+                    <MudText>Тип клиента: @client.ClientTypeNavigation.ClientTypeValue</MudText>
+                    <MudText>ИНН: @client.ClientInn</MudText>
+                    <MudText>Название компании: @client.ClientName</MudText>
+                    <MudText>Адрес компании: @client.ClientAddress</MudText>
+                </MudStack>
+            </MudPaper>
+            <MudPaper Class="mt-5">
+                <EditForm Model="@model">
+                    <DataAnnotationsValidator />
+                    <MudCard Class="pa-4">
+                        <MudCardContent>
+                            <MudText Typo="Typo.h6">Товары и услуги</MudText>
+                            <MudSelect Class="mt-5" @bind-Value="model.BilldOrderTypeId" Label="Тип товара или услуги"
+                                       For="(() => model.BilldOrderTypeId)">
+                                @foreach (var type in orderTypes)
+                                {
+                                    <MudSelectItem Value="type.OrderTypeId">@type.OrderTypeValue</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudTextField Class="mt-5" Label="Название товара или услуги" @bind-Value="model.BillOrderNameGoods"
+                                          For="@(() => model.BillOrderNameGoods)" />
+                            <MudGrid Class="mt-5">
+                                <MudItem xs="6">
+                                    <MudNumericField Immediate="true" Label="Количество товара" @bind-Value="model.BillOrderCountGoods"
+                                                     For="@(() => model.BillOrderCountGoods)" Min="0" />
+                                </MudItem>
+                                <MudItem xs="6">
+                                    <MudNumericField Immediate="true" Label="Цена товара (руб.)" @bind-Value="model.BillOrderPrice"
+                                                     For="@(() => model.BillOrderPrice)" Min="0" />
+                                </MudItem>
+                            </MudGrid>
+                            <MudText Typo="Typo.h6" Class="mt-5">Стоимость: @(model.BillOrderCountGoods * model.BillOrderPrice)</MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Success" OnClick="CreateBill">
+                                Сформировать счёт
+                            </MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </EditForm>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] ISnackbar snackbar { get; set; }
+
+    private SendBillModel model { get; set; } = new();
+    private DateTime? BillDate { get; set; } = DateTime.Today;
+    private int BillId { get; set; }
+    private Client client { get; set; }
+    private int EmployeeId { get; set; }
+    private CompanyPaymentInfo companyPaymentInfos { get; set; }
+    private List<int> infoIds { get; set; }
+    private List<OrderType> orderTypes { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        using (var ctx = ContextFactory.CreateDbContext())
+        {
+            client = ctx.Clients
+            .Include(c => c.ClientTypeNavigation)
+            .Include(c => c.ClientEmployee)
+            .FirstOrDefault(c => c.ClientId == Id);
+
+            orderTypes = ctx.OrderTypes.ToList();
+
+            companyPaymentInfos = ctx.CompanyPaymentInfos.FirstOrDefault(cpi => cpi.InfoId == 1);
+
+            var user = await WebAuthentication.GetAuthenticationStateAsync();
+            EmployeeId = Convert.ToInt32(user.User.Claims.Where(c => c.Type == "Id").Select(c => c.Value).SingleOrDefault());
+            infoIds = ctx.CompanyPaymentInfos.Select(cpi => cpi.InfoId).ToList();
+
+            if (user.User.IsInRole("2"))
+            {
+                if (client.ClientEmployeeId != EmployeeId)
+                {
+                    NavigationManager.NavigateTo("/clients");
+                    snackbar.Add("Вы не обслуживаете данного клиента!", Severity.Error);
+                }
+            }
+
+            BillId = ctx.Bills.Select(b => b.BillId).OrderBy(b => b).Last();
+            BillId++;
+        }
+        model.BilldOrderTypeId = 1;
+    }
+
+    private void SwapInfo(int infoId)
+    {
+        using (var ctx = ContextFactory.CreateDbContext())
+        {
+            companyPaymentInfos = ctx.CompanyPaymentInfos.FirstOrDefault(cpi => cpi.InfoId == infoId);
+        }
+    }
+
+    private void CreateBill()
+    {
+        model.BillOrderCost = model.BillOrderPrice * model.BillOrderCountGoods;
+    }
+
+    private void NavigateBack()
+    {
+        NavigationManager.NavigateTo($"/clientProfile/{Id}");
+    }
+}

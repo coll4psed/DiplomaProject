@@ -1,0 +1,99 @@
+﻿@page "/managerList"
+@using PasswordGenerator
+@using System.Security.Cryptography
+
+@inject NavigationManager NavigationManager
+@inject IDbContextFactory<DiplomaCRMContext> ContextFactory
+@inject IDialogService DialogService
+
+<PageTitle>Список менеджеров</PageTitle>
+
+<MudGrid Class="mt-10">
+    @foreach (var e in employees)
+    {
+        <MudItem xs="4">
+            <MudPaper Outlined="true" Class="pa-5">
+                <MudStack Row="true">
+                    <MudText Typo="Typo.h6">ФИО:</MudText>
+                    <MudText Class="mt-1" Typo="Typo.body1" Align="Align.Center">@e.FullName</MudText>
+                </MudStack>
+                <MudStack Row="true">
+                    <MudText Typo="Typo.h6">Роль:</MudText>
+                    <MudText Class="mt-1" Typo="Typo.body1" Align="Align.Center">@e.EmployeeRoleNavigation.RoleValue</MudText>
+                </MudStack>
+                <MudStack Class="mt-5" Row="true" Spacing="5">
+                    <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="@(() => DeleteEmployee(e))">Удалить</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Info" OnClick="@(() => GenerateNewPassword(e))">Сбросить пароль</MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    [Inject] ISnackbar snackbar { get; set; }
+
+    private List<Employee> employees { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using (var ctx = ContextFactory.CreateDbContext())
+        {
+            employees = ctx.Employees
+            .Where(r => r.EmployeeRole != 1)
+            .Include(r => r.EmployeeRoleNavigation)
+            .ToList();
+        }
+    }
+
+    private async void DeleteEmployee(Employee employee)
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var dialog = DialogService.Show<ConfirmDelete>("Подтверждение", options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            using (var ctx = ContextFactory.CreateDbContext())
+            {
+                ctx.Employees.Remove(employee);
+                ctx.SaveChanges();
+                snackbar.Add("Пользователь удалён", Severity.Info);
+                employees = ctx.Employees
+                .Where(r => r.EmployeeRole != 1)
+                .Include(r => r.EmployeeRoleNavigation)
+                .ToList();
+            }
+            StateHasChanged();
+        }
+    }
+
+    private async void GenerateNewPassword(Employee employee)
+    {
+        var newPassword = new Password(true, true, true, true, 12).Next();
+        var parametrs = new DialogParameters();
+        parametrs.Add("password", newPassword);
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var dialog = DialogService.Show<GenerateNewPassword>("Внимание!", parametrs, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            var hashPassword = SHA256.Create().ComputeHash(System.Text.Encoding.UTF8.GetBytes(newPassword));
+            var builderPassword = new System.Text.StringBuilder();
+            foreach (var x in hashPassword)
+                builderPassword.Append(x.ToString("x2"));
+
+            using (var ctx = ContextFactory.CreateDbContext())
+            {
+                employee.EmployeePassword = builderPassword.ToString();
+                ctx.Entry(employee).State = EntityState.Modified;
+                ctx.SaveChanges();
+                employees = ctx.Employees
+                .Where(r => r.EmployeeRole != 1)
+                .Include(r => r.EmployeeRoleNavigation)
+                .ToList();
+            }
+        }
+    }
+}

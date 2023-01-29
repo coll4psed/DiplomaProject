@@ -1,0 +1,16 @@
+﻿<MudDialog>
+    <DialogContent>
+        Вы уверены, что хотите закрыть заявку?
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Нет</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit">Да</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; }
+
+    void Submit() => MudDialog.Close(DialogResult.Ok(true));
+    void Cancel() => MudDialog.Cancel();
+}

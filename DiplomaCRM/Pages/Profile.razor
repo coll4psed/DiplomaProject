@@ -1,0 +1,91 @@
+﻿@page "/profile"
+@attribute [Authorize(Roles = "2")]
+
+@inject NavigationManager NavigationManager
+@inject IDbContextFactory<DiplomaCRMContext> ContextFactory
+@inject WebAuthentication WebAuthentication
+
+<PageTitle>Профиль</PageTitle>
+
+<MudGrid Class="my-5">
+    <MudItem xs="4">
+        <MudStack>
+            <MudText Typo="Typo.h5">ФИО</MudText>
+            <MudText Typo="Typo.body1">@employee.FullName</MudText>
+        </MudStack>
+    </MudItem>
+    <MudItem xs="12">
+        <MudPaper Outlined="true">
+            <MudTable Hover="true" Items="@clients"
+                      @bind-SelectedItem="selectedItem" AllowUnsorted="true" Loading="@_loading" LoadingProgressColor="Color.Info"
+                      OnRowClick="NavigateToProfile" RowClassFunc="@SelectedRowClassFunc" T="Client">
+                <ColGroup>
+                    <col style="width: 5%" />
+                    <col style="width: 15%" />
+                    <col style="width: 15%" />
+                    <col style="width: 15%" />
+                    <col style="width: 60%" />
+                </ColGroup>
+                <ToolBarContent>
+                    <MudText Typo="Typo.h6">Обслуживаемые клиенты</MudText>
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh>№</MudTh>
+                    <MudTh>Наименование</MudTh>
+                    <MudTh>Тип клиента</MudTh>
+                    <MudTh>Телефон</MudTh>
+                    <MudTh>Адрес</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="№">@context.ClientId</MudTd>
+                    <MudTd DataLabel="Наименование">@context.ClientName</MudTd>
+                    <MudTd DataLabel="Тип клиента">@context.ClientTypeNavigation.ClientTypeValue</MudTd>
+                    <MudTd DataLabel="Телефон">@context.ClientPhone</MudTd>
+                    <MudTd DataLabel="Адрес">@context.ClientAddress</MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager InfoFormat="@infoFormat" RowsPerPageString="Строк на странице:" />
+                </PagerContent>
+            </MudTable>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Inject] ISnackbar snackbar { get; set; }
+
+    private Client selectedItem = null;
+    private string infoFormat = "{first_item} - {last_item} из {all_items}";
+    Employee employee { get; set; } = new();
+    List<Client> clients { get; set; } = new();
+
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await WebAuthentication.GetAuthenticationStateAsync();
+        var idUser = user.User.Claims.Where(c => c.Type == "Id").Select(c => c.Value).SingleOrDefault();
+        using (var ctx = ContextFactory.CreateDbContext())
+        {
+            _loading = true;
+            employee = ctx.Employees
+            .FirstOrDefault(e => e.EmployeeId.ToString() == idUser);
+
+            clients = await ctx.Clients
+            .Where(c => c.ClientEmployeeId.ToString() == idUser)
+            .Include(c => c.ClientTypeNavigation)
+            .ToListAsync();
+            _loading = false;
+        }
+    }
+
+    private void NavigateToProfile(TableRowClickEventArgs<Client> tableRowClickEventArgs)
+    {
+        NavigationManager.NavigateTo($"clientProfile/{selectedItem.ClientId}");
+    }
+
+    private string SelectedRowClassFunc(Client client, int rowNumber)
+    {
+        return rowNumber.ToString();
+    }
+}

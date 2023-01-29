@@ -1,0 +1,130 @@
+﻿@page "/addManager"
+
+@using PasswordGenerator
+@using System.Security.Cryptography
+
+@inject NavigationManager NavigationManager
+@inject IDbContextFactory<DiplomaCRMContext> ContextFactory
+
+
+@attribute [Authorize(Roles = "1")]
+
+<PageTitle>Добавление менеджера</PageTitle>
+
+<MudContainer Class="my-16 pa-16">
+    <MudText Class="mb-5" Typo="Typo.h3" Align="Align.Center">Добавление пользователя</MudText>
+    <EditForm Model="@model" OnValidSubmit="CreateManager">
+        <DataAnnotationsValidator />
+        <MudCard Outlined="true" Class="pa-4">
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="6">
+                        <MudTextField Label="Фамилия" @bind-Value="model.LastName" For="@(() => model.LastName)" />
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudTextField Label="Имя" @bind-Value="model.FirstName" For="@(() => model.FirstName)" />
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudTextField Label="Отчество" @bind-Value="model.MiddleName" For="@(() => model.MiddleName)" />
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudTextField Label="Логин" @bind-Value="model.Login" For="@(() => model.Login)" />
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudTextField Label="Пароль" @bind-Value="model.Password" For="@(() => model.Password)"
+                                      InputType="@PasswordInput" Adornment="Adornment.End" AdornmentIcon="@PasswordInputIcon" OnAdornmentClick="SwapVisibility"
+                                      AdornmentAriaLabel="Показать пароль" Immediate="true" />
+                        <MudButton Variant="Variant.Text" Color="Color.Info" OnClick="GeneratePassword">Сгенерировать</MudButton>
+                    </MudItem>
+                    <MudItem xs="6">
+                        <MudSelect @bind-Value="model.Role" Label="Роль" AnchorOrigin="Origin.BottomCenter"
+                                   For="@(() => model.Role)">
+                            @foreach (var item in roles)
+                            {
+                                <MudSelectItem Value="@item.RoleId">@item.RoleValue</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+            <MudCardActions>
+                <MudStack Row="true" Spacing="5">
+                    <MudButton Size="Size.Small" ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Success">
+                        Создать пользователя
+                    </MudButton>
+                </MudStack>
+            </MudCardActions>
+        </MudCard>
+    </EditForm>
+</MudContainer>
+
+@code {
+    [Inject] ISnackbar snackbar { get; set; }
+
+    private ManagerModel model { get; set; } = new();
+
+    private bool isShow;
+    private string PasswordInputIcon = Icons.Material.Filled.VisibilityOff;
+    private InputType PasswordInput = InputType.Password;
+    private List<Role> roles = new();
+
+    protected override void OnInitialized()
+    {
+        using (var ctx = ContextFactory.CreateDbContext())
+        {
+            roles = ctx.Roles.Where(r => r.RoleId == 2 || r.RoleId == 3).ToList();
+        }
+    }
+
+    private async void CreateManager(EditContext editContext)
+    {
+        var manager = new Employee
+            {
+                EmployeeLastName = model.LastName,
+                EmployeeFirstName = model.FirstName,
+                EmployeeMiddleName = model.MiddleName ?? null,
+                EmployeeLogin = model.Login,
+                EmployeePassword = model.Password
+            };
+        if (model.Role != 0)
+            manager.EmployeeRole = model.Role;
+        else
+            snackbar.Add("Установите роль пользователя");
+
+        using (var ctx = ContextFactory.CreateDbContext())
+        {
+            var cryptPassword = SHA256.Create().ComputeHash(System.Text.Encoding.UTF8.GetBytes(manager.EmployeePassword));
+            var stringPassword = new System.Text.StringBuilder();
+            foreach (var x in cryptPassword)
+                stringPassword.Append(x.ToString("x2"));
+            manager.EmployeePassword = stringPassword.ToString();
+            ctx.Add(manager);
+            ctx.Entry(manager).State = EntityState.Added;
+            await ctx.SaveChangesAsync();
+            snackbar.Add("Пользователь создан", Severity.Success);
+            NavigationManager.NavigateTo("/managerList");
+        }
+    }
+
+    private void GeneratePassword()
+    {
+        var pwd = new Password(true, true, true, true, 12);
+        model.Password = pwd.Next();
+    }
+
+    private void SwapVisibility()
+    {
+        @if (isShow)
+        {
+            isShow = false;
+            PasswordInputIcon = Icons.Material.Filled.VisibilityOff;
+            PasswordInput = InputType.Password;
+        }
+        else
+        {
+            isShow = true;
+            PasswordInputIcon = Icons.Material.Filled.Visibility;
+            PasswordInput = InputType.Text;
+        }
+    }
+}

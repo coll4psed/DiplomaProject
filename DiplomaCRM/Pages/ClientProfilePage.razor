@@ -1,0 +1,179 @@
+﻿@page "/clientProfile/{Id:int}"
+
+@inject IDbContextFactory<DiplomaCRMContext> ContextFactory
+@inject IDialogService DialogService
+@inject NavigationManager NavigationManager
+@inject WebAuthentication WebAuthentication
+
+<PageTitle>Профиль клиента</PageTitle>
+
+<MudStack Row="true" Class="mt-5">
+    <AuthorizeView>
+        <Authorized>
+            <MudButton StartIcon="@Icons.Filled.ArrowBack" OnClick="NavigateBack"></MudButton>
+            @if (client.ClientEmployeeId == EmployeeId || context.User.IsInRole("3"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Info" OnClick="NavigateToEditProfile">Изменить</MudButton>
+            }
+            @if (context.User.IsInRole("1") || context.User.IsInRole("3"))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="DeleteUser">Удалить клиента</MudButton>
+            }
+            @if ((context.User.IsInRole("2") && client.ClientEmployeeId == EmployeeId) || context.User.IsInRole("3"))
+            {
+                <MudButton Variant="Variant.Filled" StartIcon="@Icons.Filled.AttachMoney" Color="Color.Tertiary"
+                       OnClick="@(() => SendBill(Id))">
+                    Выставить счёт
+                </MudButton>
+            }
+        </Authorized>
+    </AuthorizeView>
+</MudStack>
+<MudGrid Class="my-5">
+    <MudItem xs="4">
+        <MudStack>
+            <MudText Typo="Typo.h5">Наименование</MudText>
+            <MudText Typo="Typo.body1">@client.ClientName</MudText>
+        </MudStack>
+    </MudItem>
+    <MudItem xs="4">
+        <MudStack>
+            <MudText Typo="Typo.h5">Тип клиента</MudText>
+            <MudText Typo="Typo.body1">@client.ClientTypeNavigation.ClientTypeValue</MudText>
+        </MudStack>
+    </MudItem>
+    <MudItem xs="4">
+        <MudStack>
+            <MudText Typo="Typo.h5">Телефон</MudText>
+            <MudText Typo="Typo.body1">@client.ClientPhone</MudText>
+        </MudStack>
+    </MudItem>
+    <MudItem xs="4">
+        <MudStack>
+            <MudText Typo="Typo.h5">Адрес</MudText>
+            <MudText Typo="Typo.body1">@client.ClientAddress</MudText>
+        </MudStack>
+    </MudItem>
+    <MudItem xs="4">
+        <MudStack>
+            <MudText Typo="Typo.h5">Основной менеджер</MudText>
+            @if (client.ClientEmployee != null)
+            {
+                <MudText Typo="Typo.body1">@client.ClientEmployee.FullName</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body1">Отсутствует</MudText>
+            }
+        </MudStack>
+    </MudItem>
+    <MudItem xs="12" Class="mt-5">
+        <MudTable Items="@orders" AllowUnsorted="true" Loading="@_loading" LoadingProgressColor="Color.Info" Outlined="true">
+            <ColGroup>
+                <col style="width: 15%" />
+                <col style="width: 15%" />
+                <col style="width: 10%" />
+                <col style="width: 60%" />
+            </ColGroup>
+            <ToolBarContent>
+                <MudText Typo="Typo.h6">Заказы клиента</MudText>
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>
+                    <MudTableSortLabel InitialDirection="SortDirection.Ascending" SortBy="new Func<Client, object>(c => c.ClientId)">
+                        Тип заказа
+                    </MudTableSortLabel>
+                </MudTh>
+                <MudTh>
+                    <MudTableSortLabel SortBy="new Func<Client, object>(c => c.ClientName)">
+                        Дата заказа
+                    </MudTableSortLabel>
+                </MudTh>
+                <MudTh>
+                    <MudTableSortLabel SortBy="new Func<Client, object>(c => c.ClientTypeNavigation.ClientTypeValue)">
+                        Статус заказа
+                    </MudTableSortLabel>
+                </MudTh>
+                <MudTh>Описание</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Тип заказа">@context.OrderTypeNavigation.OrderTypeValue</MudTd>
+                <MudTd DataLabel="Дата заказа">@context.OrderDate.ToShortDateString()</MudTd>
+                <MudTd DataLabel="Статус заказа">@context.OrderStatusNavigation.OrderStatusValue</MudTd>
+                <MudTd DataLabel="Описание">@context.OrderDescription</MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager InfoFormat="@infoFormat" RowsPerPageString="Строк на странице:" />
+            </PagerContent>
+        </MudTable>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Inject] ISnackbar snackbar { get; set; }
+
+    private string searchString1 = "";
+    private bool _loading;
+    private string infoFormat = "{first_item} - {last_item} из {all_items}";
+    private int EmployeeId { get; set; }
+
+    private IEnumerable<Order> orders = new List<Order>();
+
+    Client client = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        using (var ctx = ContextFactory.CreateDbContext())
+        {
+            client = ctx.Clients
+            .Include(c => c.ClientTypeNavigation)
+            .Include(c => c.ClientEmployee)
+            .FirstOrDefault(c => c.ClientId == Id);
+
+            orders = await ctx.Orders
+            .Include(o => o.OrderStatusNavigation)
+            .Include(o => o.OrderTypeNavigation)
+            .Where(o => o.OrderClientId == Id)
+            .ToListAsync();
+
+            var user = await WebAuthentication.GetAuthenticationStateAsync();
+            EmployeeId = Convert.ToInt32(user.User.Claims.Where(c => c.Type == "Id").Select(c => c.Value).SingleOrDefault());
+        }
+        _loading = false;
+    }
+
+    private void NavigateBack()
+    {
+        NavigationManager.NavigateTo(NavigationManager.BaseUri + "clients");
+    }
+
+    private void NavigateToEditProfile()
+    {
+        NavigationManager.NavigateTo(NavigationManager.BaseUri + $"addEditClient/{Id}");
+    }
+
+    private void SendBill(int clientId)
+    {
+        NavigationManager.NavigateTo($"/sendBill/{clientId}");
+    }
+
+    private async void DeleteUser()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var dialog = DialogService.Show<ConfirmDelete>("Подтверждение", options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            using (var ctx = ContextFactory.CreateDbContext())
+            {
+                ctx.Clients.Remove(client);
+                ctx.SaveChanges();
+                snackbar.Add("Клиент удалён", Severity.Info);
+                NavigationManager.NavigateTo("/clients");
+            }
+        }
+    }
+}

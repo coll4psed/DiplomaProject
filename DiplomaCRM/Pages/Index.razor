@@ -1,0 +1,65 @@
+﻿@page "/"
+
+@layout EmptyLayout
+@inject WebAuthentication WebAuthentication
+@inject NavigationManager NavigationManager
+@inject IHttpContextAccessor HttpClient
+
+<PageTitle>Авторизация</PageTitle>
+
+
+<MudContainer Class="my-16 pa-16">
+    <MudText Align="Align.Center" Typo="Typo.h2">Добро пожаловать в AceTelecom CRM!</MudText>
+    <MudGrid Justify="Justify.Center" Class="mt-16">
+        <MudItem xs="6">
+            <EditForm Model="@model" OnValidSubmit="Authorize" Context="Login">
+                <DataAnnotationsValidator />
+                <MudCard Class="pa-4" Outlined="true">
+                    <MudCardContent>
+                        <MudTextField Immediate="true" Label="Логин" @bind-Value="model.Login"
+                                      For="@(() => model.Login)" />
+                        <MudTextField Immediate="true" Label="Пароль" @bind-Value="model.Password"
+                                      For="@(() => model.Password)" InputType="InputType.Password" />
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Success"
+                                   StartIcon="@Icons.Filled.Login">
+                            Войти
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </EditForm>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    [Inject] ISnackbar snackbar { get; set; }
+    bool _loading;
+
+    private LoginModel model { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authenticationState = await WebAuthentication.GetAuthenticationStateAsync();
+        if (authenticationState.User.Identity != null && authenticationState.User.Identity.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("main");
+        }
+    }
+
+    public async void Authorize(EditContext editContext)
+    {
+        await WebAuthentication.LoginAsync(model);
+        var authenticationState = await WebAuthentication.GetAuthenticationStateAsync();
+        if (authenticationState.User.Identity != null && authenticationState.User.Identity.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("main");
+        }
+        else
+        {
+            snackbar.Add("Логин или пароль введены неправильно", Severity.Error);
+            model.Password = "";
+        }
+    }
+}
