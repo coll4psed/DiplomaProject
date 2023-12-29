@@ -34,7 +34,6 @@ namespace DiplomaCRM.Context
             if (!optionsBuilder.IsConfigured)
             {
                 optionsBuilder.UseLazyLoadingProxies();
-                optionsBuilder.UseNpgsql("Server=146.185.208.133;Port=5432;Database=DiplomaCRM;Uid=DiplomaCRMAdmin;Pwd=Qos?Xko118128y1q");
             }
         }
 
